@@ -1,81 +1,61 @@
-import asyncio
-import logging
-import sys
-from aiogram import Bot, Dispatcher, types, F
-from aiogram.filters.command import CommandStart
-from aiogram.types import KeyboardButton, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
-from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.fsm.state import State, StatesGroup
-from aiogram.fsm.context import FSMContext
+import asyncio, logging, sys
+from os import getenv
 
-BOT_TOKEN = ""
+from aiogram.fsm.context import FSMContext
+from aiogram.types import Message
+from aiogram import Dispatcher, Bot
+from aiogram.filters import CommandStart
+from aiogram.fsm.storage.memory import MemoryStorage
+from dotenv import load_dotenv
+from sqlalchemy import BIGINT, insert, select, create_engine
+from sqlalchemy.orm import declarative_base, Mapped, mapped_column, Session
+
+BOT_TOKEN = "6331298174:AAG-fC9A-Ci_8Bna8x9DppOI-Te1sS7tA5k"
 dp = Dispatcher(storage=MemoryStorage())
 
+load_dotenv()
+Base = declarative_base()
+DB_USER = getenv("DB_USER")
+DB_PASSWORD = getenv("DB_PASSWORD")
+DB_NAME = getenv("DB_NAME")
+DB_HOST = getenv("DB_HOST")
+DB_CONFIG = f"postgresql+psycopg2://{DB_USER}:{DB_PASSWORD}@{DB_HOST}/{DB_NAME}"
+engine = create_engine(DB_CONFIG)
+session = Session(engine)
 
 
-class UserState(StatesGroup):
-    name = State()
-    age = State()
-    phone_number = State()
-    request = State()
+class User(Base):
+    __tablename__ = "bot_users"
+    id: Mapped[int] = mapped_column(__type_pos=BIGINT, autoincrement=True, primary_key=True)
+    user_id: Mapped[int] = mapped_column(__type_pos=BIGINT)
+    fullname: Mapped[str] = mapped_column()
+    username: Mapped[str] = mapped_column(nullable=True)
+
+    def insert(self, user_id, fullname, username):
+        user_data = {
+            "user_id": user_id,
+            "fullname": fullname,
+            "username": username,
+        }
+        user: User | None = session.execute(select(User).where(User.user_id == user_id)).fetchone()
+        if not user:
+            query = insert(User).values(**user_data)
+            session.execute(query)
+            session.commit()
+
+    def select(self):
+        users_datas = session.execute(select(User.user_id, User.fullname, User.username)).fetchall()
+        return users_datas
 
 
-def phone_button():
-    phone_btn = KeyboardButton(text="Phone ☎️", request_contact=True)
-    return ReplyKeyboardMarkup(keyboard=[[phone_btn]], resize_keyboard=True)
-
-
-def request_button():
-    save = InlineKeyboardButton(text="SAVE 🟢", callback_data="save")
-    edit = InlineKeyboardButton(text="EDIT 📝", callback_data="edit")
-    design = [
-        [save, edit]
-    ]
-    return InlineKeyboardMarkup(inline_keyboard=design)
+Base.metadata.create_all(engine)
 
 
 @dp.message(CommandStart())
-async def start_handler(msg: types.Message, state: FSMContext):
-    await msg.answer("Ismizni kiriting : ")
-    await state.set_state(UserState.name)
-
-
-@dp.message(UserState.name)
-async def name_handler(msg: types.Message, state: FSMContext):
-    data = await state.get_data()
-    data.update({"name": msg.text})
-    await state.set_data(data)
-    await msg.answer("Yoshizni kiriting EXAMPLE (25-24-45): ")
-    await state.set_state(UserState.age)
-
-
-@dp.message(UserState.age)
-async def age_handler(msg: types.Message, state: FSMContext):
-    data = await state.get_data()
-    data.update({"age": msg.text})
-    await state.set_data(data)
-    await msg.answer("Telefon raqamni yuborish uchun quydagi buttondi bosing : ", reply_markup=phone_button())
-    await state.set_state(UserState.phone_number)
-
-
-@dp.message(UserState.phone_number, F.contact)
-async def phone_number_handler(msg: types.Message, state: FSMContext):
-    data = await state.get_data()
-    name = data.get("name")
-    age = data.get("age")
-    phone = msg.contact.phone_number
-    text = f"name : {name}\nage : {age}\nphone ☎️: {phone}"
-    await msg.answer(text, reply_markup=request_button())
-    await state.set_state(UserState.request)
-
-
-@dp.callback_query(UserState.request)
-async def request_handler(call: types.CallbackQuery, state: FSMContext):
-    if call.data == 'save':
-        await call.message.answer("Mofaqaiyatli saqlandi !")
-    elif call.data == "edit":
-        await call.message.answer("Ismizni kiriting : ")
-        await state.set_state(UserState.name)
+async def start_handler(msg: Message, state: FSMContext):
+    User.insert(Base,msg.from_user.id, msg.from_user.full_name, msg.from_user.username)
+    await msg.answer(f"Hello - 👤 {msg.from_user.full_name}")
+    print(f"👤 - {msg.from_user.full_name}")
 
 
 async def main():

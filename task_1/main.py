@@ -1,37 +1,46 @@
+import logging
 import smtplib
-from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from celery import Celery
+
+app = Celery('hello', broker='pyamqp://guest@localhost/')
+
+@app.task
+def emails_send():
+
+    logging.basicConfig(filename="EMAIL.log", level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+    emails = """
+       sarvarismatullayev7@gmail.com,
+       sarvarismatullayev3@gmail.com,
+       sarvarbekismatullayev0@gmail.com,
+       ismatullayevsarvar36@.gmail.com
+       """.split('\n')
+    for i in emails:
+
+        sender_email = "sarvarismatullayev7@gmail.com"
+        sender_password = "ruumgybqddjbiqyh"
+        receiver_email = i
+        subject = "Muhammad"
+        message = "Nima gap"
 
 
-sender_email = "sarvarismatullayev7@gmail.com"
-receiver_email = "sarvarismatullayev3@gmail.com"
-password = ""
+        msg = MIMEMultipart()
+        msg["From"] = sender_email
+        msg["To"] = receiver_email
+        msg["Subject"] = subject
 
+        msg.attach(MIMEText(message, "plain"))
 
-subject = "Salom"
-body = "Nima gap"
+        try:
+            smtp_server = smtplib.SMTP("smtp.gmail.com", 587)
+            smtp_server.starttls()
+            smtp_server.login(sender_email, sender_password)
+            text = msg.as_string()
+            smtp_server.sendmail(sender_email, receiver_email, text)
+            smtp_server.quit()
+            logging.info("E-pochta muvaffaqiyatli yuborildi!")
+        except Exception as e:
+            logging.error(f"E-pochta yuborilmadi. Xatolik: {str(e)}")
 
-
-smtp_server = "smtp.gmail.com"
-smtp_port = 587
-
-
-server = smtplib.SMTP(smtp_server, smtp_port)
-server.starttls()
-
-
-server.login(sender_email, password)
-
-
-message = MIMEMultipart()
-message["From"] = sender_email
-message["To"] = receiver_email
-message["Subject"] = subject
-message.attach(MIMEText(body, "plain"))
-
-
-server.sendmail(sender_email, receiver_email, message.as_string())
-
-
-server.quit()
-
+emails_send()
